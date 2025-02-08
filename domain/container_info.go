@@ -1,7 +1,7 @@
 package domain
 
 import (
-	"net"
+	"net/netip"
 	"time"
 )
 
@@ -9,12 +9,19 @@ type ContainerSortProperty string
 
 const (
 	ContainerSortByIP          ContainerSortProperty = "ip"
-	ContainerSortByLastPing                          = "last_ping"
-	ContainerSortByLastSuccess                       = "last_success"
+	ContainerSortByLastPing    ContainerSortProperty = "last_ping"
+	ContainerSortByLastSuccess ContainerSortProperty = "last_success"
+)
+
+type ContainerOrder string
+
+const (
+	ContainerSortAsc  ContainerOrder = "asc"
+	ContainerSortDesc ContainerOrder = "desc"
 )
 
 type ContainerInfo struct {
-	IP          net.IPAddr `json:"ip"`
-	LastPing    time.Time  `json:"last_ping"`
-	LastSuccess time.Time  `json:"last_success"`
+	IP          netip.Addr `json:"ip"`
+	LastPing    *time.Time `json:"last_ping,omitempty"`
+	LastSuccess *time.Time `json:"last_success,omitempty"`
 }

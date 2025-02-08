@@ -13,6 +13,8 @@ paths:
       - $ref: '#/components/parameters/ContainerIP'
       - $ref: '#/components/parameters/OldestFirst'
       - $ref: '#/components/parameters/FilterSuccess'
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Offset'
       responses:
         "200":
           description: OK

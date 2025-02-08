@@ -1,13 +1,13 @@
 package domain
 
 import (
-	"net"
+	"net/netip"
 	"time"
 )
 
 type Ping struct {
 	ID          int
-	ContainerIP net.IPAddr `json:"container_ip"`
-	Timestamp   *time.Time `json:"timestamp"`
+	ContainerIP netip.Addr `json:"container_ip"`
+	Timestamp   time.Time  `json:"timestamp"`
 	Success     bool       `json:"success"`
 }
