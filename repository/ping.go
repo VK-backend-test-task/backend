@@ -5,10 +5,8 @@ import (
 	"context"
 	"fmt"
 	"net/netip"
-	"strings"
 	"time"
 
-	"github.com/lib/pq"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -65,9 +63,11 @@ func NewPingRepository(db *gorm.DB) PingRepository {
 func (r pingRepository) Get(ctx context.Context, params PingGetParams) ([]domain.Ping, error) {
 	gormPings := make([]gormPingModel, 0)
 	tx := r.db.
-		Limit(params.Limit).
 		Offset(params.Offset).
 		Order(clause.OrderByColumn{Column: clause.Column{Name: "timestamp"}, Desc: !params.OldestFirst})
+	if params.Limit > 0 {
+		tx = tx.Limit(params.Limit)
+	}
 	if params.ContainerIP != nil {
 		tx = tx.Where("container = ?", params.ContainerIP.String())
 	}
@@ -105,40 +105,12 @@ func (r pingRepository) Put(ctx context.Context, pings []domain.Ping) error {
 	return r.db.Create(gormPings).Error
 }
 
-func (r pingRepository) buildStatementForAggregate(params PingAggregateParams) string {
-	clauses := make([]string, 0)
-	if params.PingBefore != nil {
-		clause := fmt.Sprintf(`("last_ping" < %s)`, pq.QuoteLiteral(params.SuccessBefore.UTC().String()))
-		clauses = append(clauses, clause)
-	}
-	if params.SuccessBefore != nil {
-		clause := fmt.Sprintf(`("last_success" < %s)`, pq.QuoteLiteral(params.SuccessBefore.UTC().String()))
-		clauses = append(clauses, clause)
-	}
-	if params.SortProperty == nil {
-		s := domain.ContainerSortByLastPing
-		params.SortProperty = &s
-	}
-	if params.SortOrder == nil {
-		s := domain.ContainerSortDesc
-		params.SortOrder = &s
-	}
-	condition := "TRUE"
-	if len(clauses) > 0 {
-		condition = strings.Join(clauses, " AND ")
-	}
-	statementStr := fmt.Sprintf(`
-		SELECT MAX("timestamp") "last_ping", MAX(CASE WHEN "success" "timestamp" END) "last_success" FROM "pings"
-		GROUP BY "container_ip" HAVING %s ORDER BY %s %s LIMIT %d OFFSET %d;`, condition,
-		pq.QuoteLiteral(string(*params.SortProperty)), pq.QuoteLiteral(string(*params.SortOrder)),
-		params.Limit, params.Offset)
-
-	return statementStr
-}
-
 func (r pingRepository) Aggregate(ctx context.Context, params PingAggregateParams) ([]domain.ContainerInfo, error) {
-	tx := r.db.Model(&gormPingModel{}).Select("max(timestamp) last_ping)", "max(case when success timestamp end) last_success").Group("container_ip").
-		Limit(params.Limit).Offset(params.Offset)
+	tx := r.db.Model(&gormPingModel{}).Select("max(timestamp) last_ping)", "max(case when success timestamp end) last_success").
+		Group("container_ip").Offset(params.Offset)
+	if params.Limit > 0 {
+		tx = tx.Limit(params.Limit)
+	}
 	if params.SortOrder != nil {
 		tx = tx.Order(clause.OrderByColumn{Column: clause.Column{Name: string(*params.SortProperty)}, Desc: *params.SortOrder == domain.ContainerSortDesc})
 	}

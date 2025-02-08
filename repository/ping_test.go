@@ -3,6 +3,7 @@ package repository
 import (
 	"backend/domain"
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"fmt"
 	"log"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	_ "github.com/lib/pq"
 	"github.com/ory/dockertest/v3"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -17,6 +19,7 @@ import (
 
 var db *sql.DB
 var repo PingRepository
+var gormDB *gorm.DB
 
 func TestMain(m *testing.M) {
 	pool, err := dockertest.NewPool("")
@@ -40,8 +43,8 @@ func TestMain(m *testing.M) {
 		if err != nil {
 			return err
 		}
-
-		return db.Ping()
+		err = db.Ping()
+		return err
 	}); err != nil {
 		log.Fatalf("Could not connect to database: %s", err)
 	}
@@ -53,7 +56,7 @@ func TestMain(m *testing.M) {
 
 	}()
 
-	gormDB, err := gorm.Open(postgres.New(postgres.Config{
+	gormDB, err = gorm.Open(postgres.New(postgres.Config{
 		DriverName: "postgres",
 		Conn:       db,
 	}), &gorm.Config{})
@@ -65,21 +68,41 @@ func TestMain(m *testing.M) {
 	m.Run()
 }
 
-func TestSomething(t *testing.T) {
-	addr, err := netip.ParseAddr("127.0.0.1")
+func TestPut(t *testing.T) {
+	records := make([]domain.Ping, 1024)
+	for i := range records {
+		addrRaw := [4]byte{}
+		if n, err := rand.Read(addrRaw[:]); n != 4 || err != nil {
+			panic(err)
+		}
+
+		addr := netip.AddrFrom4(addrRaw)
+
+		records[i] = domain.Ping{ContainerIP: addr, Timestamp: time.Now().UTC(), Success: true}
+	}
+
+	err := repo.Put(context.Background(), records)
 	if err != nil {
 		panic(err)
 	}
 
-	err = repo.Put(context.Background(), []domain.Ping{{ContainerIP: addr, Timestamp: time.Now(), Success: true}})
-	if err != nil {
-		panic(err)
+	gormPings := make([]gormPingModel, 0)
+	gormDB.Model(&gormPingModel{}).Limit(len(records) + 1).Find(&gormPings)
+	if len(gormPings) != len(records) {
+		t.Fatalf("len mismatch (received %d instead of %d)", len(gormPings), len(records))
 	}
 
-	ret, err := repo.Get(context.Background(), PingGetParams{Limit: 10})
-	if err != nil {
-		panic(err)
-	}
+	for i, gormPing := range gormPings {
+		if gormPing.ContainerIP != records[i].ContainerIP.String() {
+			t.Fatalf("IP addr mismatch at %d (our %s, their %s)", i, records[i].ContainerIP.String(), gormPing.ContainerIP)
+		}
 
-	t.Logf("%#v\n", ret)
+		if gormPing.Timestamp != records[i].Timestamp.Format(time.RFC3339) {
+			t.Fatalf("time mismatch at %d (our %s, their %s)", i, records[i].Timestamp.Format(time.RFC3339), gormPing.Timestamp)
+		}
+
+		if gormPing.Success != records[i].Success {
+			t.Fatalf("success mismatch at %d (out %t, their %t)", i, records[i].Success, gormPing.Success)
+		}
+	}
 }
