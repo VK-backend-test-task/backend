@@ -6,61 +6,52 @@ servers:
 - url: http://backend
   description: Backend
 paths:
-  /containers:
+  /pings:
     get:
-      summary: Получить информацию о контейнерах и их последнем пинге (начиная от
-        самых старых)
+      summary: Получить информацию о пингах
       parameters:
-      - name: pinged_before
-        in: query
-        description: Оставить только те контейнеры которые были пропингованы до определенного
-          момента времени
-        required: false
-        style: form
-        explode: true
-        schema:
-          type: integer
-      - name: succeed_before
-        in: query
-        description: Оставить только те контейнеры которые были успешно пропингованы
-          до определенного момента времени
-        required: false
-        style: form
-        explode: true
-        schema:
-          type: integer
-      - name: sort_by
-        in: query
-        description: Выбрать поле сортировки
-        required: false
-        style: form
-        explode: true
-        schema:
-          $ref: '#/components/schemas/ContainerInfoField'
-      - name: sort_order
-        in: query
-        description: Выбрать порядок сортировки
-        required: false
-        style: form
-        explode: true
-        schema:
-          $ref: '#/components/schemas/SortOrder'
-      - name: limit
-        in: query
-        description: Максимальное количество выдаваемых результатов
-        required: false
-        style: form
-        explode: true
-        schema:
-          type: integer
-      - name: offset
-        in: query
-        description: "Количество результатов, которое необходимо пропустить"
-        required: false
-        style: form
-        explode: true
-        schema:
-          type: integer
+      - $ref: '#/components/parameters/IP'
+      - $ref: '#/components/parameters/OldestFirst'
+      - $ref: '#/components/parameters/FilterSuccessful'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PingInfo'
+        "400":
+          description: Ошибка на стороне пользователя
+        "500":
+          description: Ошибка на стороне сервера
+    put:
+      summary: Загрузить информацию о пингах
+      requestBody:
+        description: Список результатов пинга
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/PingInfo'
+        required: true
+      responses:
+        "200":
+          description: OK
+        "400":
+          description: Ошибка на стороне пользователя
+        "500":
+          description: Ошибка на стороне сервера
+  /pings/aggregate:
+    get:
+      summary: Получить информацию о контейнерах и их последнем пинге
+      parameters:
+      - $ref: '#/components/parameters/ContainerSortProperty'
+      - $ref: '#/components/parameters/SortOrder'
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Offset'
       responses:
         "200":
           description: OK
@@ -75,55 +66,108 @@ paths:
           description: Ошибка на стороне пользователя
         "500":
           description: Ошибка на стороне сервера
-  /pings:
-    post:
-      summary: Обновить информацию о пропингованных контейнерах
-      requestBody:
-        description: Список результатов пинга
-        content:
-          application/json: {}
-        required: true
-      responses:
-        "200":
-          description: OK
-        "400":
-          description: Ошибка на стороне пользователя
-        "500":
-          description: Ошибка на стороне сервера
 components:
-  schemas:
+  parameters:
+    IP:
+      in: query
+      name: container_ip
+      example: 127.0.0.1
+      description: IP контейнера, для которого выдавать список пингов
+      required: false
+      style: form
+      explode: true
+      schema:
+        type: string
     SortOrder:
-      type: string
-      enum:
-      - asc
-      - desc
-    ContainerInfoField:
+      in: query
+      name: order
+      description: Порядок сортировки
+      required: false
+      style: form
+      explode: true
+      schema:
+        type: string
+        enum:
+        - asc
+        - desc
+    Limit:
+      in: query
+      name: limit
+      description: Максимальное количество выдаваемых результатов
+      required: false
+      style: form
+      explode: true
+      schema:
+        type: integer
+        minimum: 0
+    Offset:
+      in: query
+      name: offset
+      description: Количество результатов, которое необходимо пропустить
+      required: false
+      style: form
+      explode: true
+      schema:
+        type: integer
+        minimum: 0
+    ContainerSortProperty:
+      in: query
+      name: sort
+      description: Поле сортировки контейнеров
+      required: false
+      style: form
+      explode: true
+      schema:
+        $ref: '#/components/schemas/ContainerSortProperty'
+    OldestFirst:
+      in: query
+      name: oldest_first
+      description: Сортировать начиная со старых записей
+      required: false
+      style: form
+      explode: true
+      schema:
+        type: boolean
+    FilterSuccessful:
+      in: query
+      name: filter
+      required: false
+      style: form
+      explode: true
+      description: Возвращать только успешные или неудавшиеся записи
+      schema:
+        type: boolean
+  schemas:
+    ContainerSortProperty:
       type: string
       enum:
       - ip
-      - lastPing
-      - lastSuccess
+      - last_ping
+      - last_success
     ContainerInfo:
-      required:
-      - ip
+      required: [ip]
       type: object
       properties:
         ip:
           type: string
-        lastPing:
+        last_ping:
           type: integer
-        lastSuccess:
+        last_success:
           type: integer
       example:
-        ip: ip
-        lastPing: 0
-        lastSuccess: 6
-    ContainerPingResult:
+        ip: 127.0.0.1
+        last_ping: 1739032217
+        last_success: 1739032217
+    PingInfo:
       type: object
       properties:
         ip:
           type: string
-        lastPing:
+        timestamp:
           type: integer
         success:
           type: boolean
+      example:
+        ip: 127.0.0.1
+        timestamp: 1739032217
+        success: true
