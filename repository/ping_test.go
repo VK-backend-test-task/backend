@@ -10,15 +10,13 @@ import (
 	"testing"
 	"time"
 
-	migrate "github.com/golang-migrate/migrate/v4"
-	"github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
-	_ "github.com/lib/pq"
 	"github.com/ory/dockertest/v3"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 var db *sql.DB
-var repo pingRepository
+var repo PingRepository
 
 func TestMain(m *testing.M) {
 	pool, err := dockertest.NewPool("")
@@ -37,12 +35,12 @@ func TestMain(m *testing.M) {
 	}
 
 	if err := pool.Retry(func() error {
-		var err error
-		db, err = sql.Open("postgres", fmt.Sprintf("postgresql://postgres:postgrespass@localhost:%s/postgres?sslmode=disable", resource.GetPort("5432/tcp")))
+		url := fmt.Sprintf("postgresql://postgres:postgrespass@localhost:%s/postgres?sslmode=disable", resource.GetPort("5432/tcp"))
+		db, err = sql.Open("postgres", url)
 		if err != nil {
 			return err
 		}
-		repo = pingRepository{db: db}
+
 		return db.Ping()
 	}); err != nil {
 		log.Fatalf("Could not connect to database: %s", err)
@@ -55,17 +53,15 @@ func TestMain(m *testing.M) {
 
 	}()
 
-	driver, err := postgres.WithInstance(db, &postgres.Config{})
-	mm, err := migrate.NewWithDatabaseInstance(
-		"file:///home/petruekhin/Projects/vkb/backend/db/migration",
-		"postgres", driver)
+	gormDB, err := gorm.Open(postgres.New(postgres.Config{
+		DriverName: "postgres",
+		Conn:       db,
+	}), &gorm.Config{})
 	if err != nil {
 		panic(err)
 	}
-	err = mm.Up()
-	if err != nil {
-		panic(err)
-	}
+	repo = NewPingRepository(gormDB)
+
 	m.Run()
 }
 

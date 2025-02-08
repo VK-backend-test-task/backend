@@ -3,13 +3,14 @@ package repository
 import (
 	"backend/domain"
 	"context"
-	"database/sql"
 	"fmt"
 	"net/netip"
 	"strings"
 	"time"
 
 	"github.com/lib/pq"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type PingGetParams struct {
@@ -36,97 +37,72 @@ type PingRepository interface {
 }
 
 type pingRepository struct {
-	db *sql.DB
+	db *gorm.DB
 }
 
-func (r *pingRepository) buildStatementForGet(params PingGetParams) string {
-	clauses := make([]string, 0)
-	if params.ContainerIP != nil {
-		clause := fmt.Sprintf(`("container_ip" = %s)`, pq.QuoteLiteral(params.ContainerIP.String()))
-		clauses = append(clauses, clause)
-	}
-	if params.Success != nil {
-		if *params.Success {
-			clauses = append(clauses, `("success" = TRUE)`)
-		} else {
-			clauses = append(clauses, `("success" = FALSE)`)
-		}
-	}
+type gormPingModel struct {
+	ID          int
+	ContainerIP string
+	Timestamp   string
+	Success     bool
+}
 
-	condition := "TRUE"
-	if len(clauses) > 0 {
-		condition = strings.Join(clauses, " AND ")
-	}
+func (gormPingModel) TableName() string {
+	return "pings"
+}
 
-	order := "DESC"
-	if params.OldestFirst {
-		order = "ASC"
-	}
+type gormContainerModel struct {
+	IP          string
+	LastPing    string
+	LastSuccess string
+}
 
-	statementStr := fmt.Sprintf(`SELECT ("id", "container_ip", "timestamp", "success") FROM "pings"
-		WHERE %s ORDER BY "timestamp" %s LIMIT %d OFFSET %d;`,
-		condition, order, params.Limit, params.Offset)
-
-	return statementStr
+func NewPingRepository(db *gorm.DB) PingRepository {
+	db.AutoMigrate(&gormPingModel{})
+	return pingRepository{db}
 }
 
 func (r pingRepository) Get(ctx context.Context, params PingGetParams) ([]domain.Ping, error) {
-	queryResult, err := r.db.QueryContext(ctx, r.buildStatementForGet(params))
-	if err != nil {
-		return nil, fmt.Errorf("could not execute db query: %w", err)
+	gormPings := make([]gormPingModel, 0)
+	tx := r.db.
+		Limit(params.Limit).
+		Offset(params.Offset).
+		Order(clause.OrderByColumn{Column: clause.Column{Name: "timestamp"}, Desc: !params.OldestFirst})
+	if params.ContainerIP != nil {
+		tx = tx.Where("container = ?", params.ContainerIP.String())
 	}
-	defer queryResult.Close()
-
-	result := make([]domain.Ping, 0)
-	for queryResult.Next() {
-		var (
-			pingID             int
-			pingRawContainerIP string
-			pingRawTimestamp   string
-			pingSuccess        bool
-		)
-		if err := queryResult.Scan(&pingID, &pingRawContainerIP, &pingRawTimestamp, &pingSuccess); err != nil {
-			return nil, fmt.Errorf("could not read column values from the db: %w", err)
-		}
-
-		pingContainerIP, err := netip.ParseAddr(pingRawContainerIP)
-		if err != nil {
-			return nil, fmt.Errorf("could not parse IP address: %w", err)
-		}
-
-		pingTimestamp, err := time.Parse(time.RFC3339, pingRawTimestamp)
-		if err != nil {
-			return nil, fmt.Errorf("could not parse ping time: %w", err)
-		}
-
-		result = append(result, domain.Ping{ID: pingID, ContainerIP: pingContainerIP, Timestamp: pingTimestamp, Success: pingSuccess})
+	tx = tx.Find(&gormPings)
+	if tx.Error != nil {
+		return nil, fmt.Errorf("could not execute transaction: %w", tx.Error)
 	}
+	result := make([]domain.Ping, len(gormPings))
+	for i, gormPing := range gormPings {
+		pingContainerIP, err := netip.ParseAddr(gormPing.ContainerIP)
+		if err != nil {
+			return nil, fmt.Errorf("could not parse IP from db: %w", err)
+		}
 
+		pingTimestamp, err := time.Parse(time.RFC3339, gormPing.Timestamp)
+		if err != nil {
+			return nil, fmt.Errorf("could not parse timestamp from db: %w", err)
+		}
+
+		result[i] = domain.Ping{ID: gormPing.ID, ContainerIP: pingContainerIP, Timestamp: pingTimestamp, Success: gormPing.Success}
+	}
 	return result, nil
 }
 
-func (r pingRepository) buildPutStatement(pings []domain.Ping) string {
-	values := make([]string, 0, len(pings))
-	for _, ping := range pings {
-		pingContainerIP := ping.ContainerIP.String()
-		pingTimestamp := ping.Timestamp.Format(time.RFC3339)
-		pingSuccess := "FALSE"
-		if ping.Success {
-			pingSuccess = "TRUE"
-		}
-		value := fmt.Sprintf("(%s, %s, %s)", pq.QuoteLiteral(pingContainerIP), pq.QuoteLiteral(pingTimestamp), pingSuccess)
-		values = append(values, value)
-	}
-
-	statementStr := fmt.Sprintf(`INSERT INTO "pings" ("container_ip", "timestamp", "success") VALUES %s;`, strings.Join(values, ", "))
-	return statementStr
-}
-
 func (r pingRepository) Put(ctx context.Context, pings []domain.Ping) error {
-	if _, err := r.db.ExecContext(ctx, r.buildPutStatement(pings)); err != nil {
-		return fmt.Errorf("could not execute statement to save pings in db: %w", err)
+	gormPings := make([]gormPingModel, len(pings))
+	for i, ping := range pings {
+		gormPings[i] = gormPingModel{
+			ID:          ping.ID,
+			ContainerIP: ping.ContainerIP.String(),
+			Timestamp:   ping.Timestamp.Format(time.RFC3339),
+			Success:     ping.Success,
+		}
 	}
-	return nil
+	return r.db.Create(gormPings).Error
 }
 
 func (r pingRepository) buildStatementForAggregate(params PingAggregateParams) string {
@@ -161,41 +137,45 @@ func (r pingRepository) buildStatementForAggregate(params PingAggregateParams) s
 }
 
 func (r pingRepository) Aggregate(ctx context.Context, params PingAggregateParams) ([]domain.ContainerInfo, error) {
-	queryResult, err := r.db.QueryContext(ctx, r.buildStatementForAggregate(params))
-	if err != nil {
-		return nil, fmt.Errorf("could not execute db query: %w", err)
+	tx := r.db.Model(&gormPingModel{}).Select("max(timestamp) last_ping)", "max(case when success timestamp end) last_success").Group("container_ip").
+		Limit(params.Limit).Offset(params.Offset)
+	if params.SortOrder != nil {
+		tx = tx.Order(clause.OrderByColumn{Column: clause.Column{Name: string(*params.SortProperty)}, Desc: *params.SortOrder == domain.ContainerSortDesc})
 	}
-	defer queryResult.Close()
-
-	result := make([]domain.ContainerInfo, 0)
-	for queryResult.Next() {
-		var (
-			containerRawIP          string
-			containerRawLastPing    string
-			containerRawLastSuccess string
-		)
-		if err := queryResult.Scan(&containerRawIP, &containerRawLastPing, &containerRawLastSuccess); err != nil {
-			return nil, fmt.Errorf("could not read column values from the db: %w", err)
-		}
-
-		containerIP, err := netip.ParseAddr(containerRawIP)
-		if err != nil {
-			return nil, fmt.Errorf("could not parse IP from db: %w", err)
-		}
-
-		containerLastPing, err := time.Parse(time.RFC3339, containerRawLastPing)
-		if err != nil {
-			return nil, fmt.Errorf("could not parse time from db: %w", err)
-		}
-
-		containerLastSuccess, err := time.Parse(time.RFC3339, containerRawLastPing)
-		if err != nil {
-			return nil, fmt.Errorf("could not parse time from db: %w", err)
-		}
-
-		result = append(result, domain.ContainerInfo{IP: containerIP, LastPing: &containerLastPing, LastSuccess: &containerLastSuccess})
+	if params.SuccessBefore != nil {
+		tx = tx.Having("last_success < ?", params.SuccessBefore)
 	}
+	if params.PingBefore != nil {
+		tx = tx.Having("last_ping < ?", params.PingBefore)
+	}
+	containers := make([]gormContainerModel, 0)
+	tx = tx.Find(&containers)
+	if tx.Error != nil {
+		return nil, fmt.Errorf("could not execute transaction: %w", tx.Error)
+	}
+	result := make([]domain.ContainerInfo, len(containers))
+	for i, container := range containers {
+		containerIP, err := netip.ParseAddr(container.IP)
+		if err != nil {
+			return nil, fmt.Errorf("could not parse ip from db: %w", err)
+		}
 
+		lastPing, err := time.Parse(time.RFC3339, container.LastPing)
+		if err != nil {
+			return nil, fmt.Errorf("could not parse last ping time from db: %w", err)
+		}
+
+		lastSuccess, err := time.Parse(time.RFC3339, container.LastPing)
+		if err != nil {
+			return nil, fmt.Errorf("could not parse last successful ping time from db: %w", err)
+		}
+
+		result[i] = domain.ContainerInfo{
+			IP:          containerIP,
+			LastPing:    &lastPing,
+			LastSuccess: &lastSuccess,
+		}
+	}
 	return result, nil
 }
 
