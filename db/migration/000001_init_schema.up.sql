@@ -1,5 +1,6 @@
-CREATE TABLE containers (
-    ip TEXT NOT NULL PRIMARY KEY,
-    last_ping TIME,
-    last_success TIME
+CREATE TABLE pings (
+    id SERIAL PRIMARY KEY,
+    ip TEXT NOT NULL,
+    timestamp TIME,
+    success BOOLEAN
 );
