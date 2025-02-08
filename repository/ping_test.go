@@ -68,6 +68,7 @@ func TestMain(m *testing.M) {
 	m.Run()
 }
 
+// the easiest possible test, no edge cases, just check that everything we wanted to insert was indeed inserted just as we wanted
 func TestPut(t *testing.T) {
 	records := make([]domain.Ping, 1024)
 	for i := range records {
