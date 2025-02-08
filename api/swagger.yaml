@@ -10,9 +10,9 @@ paths:
     get:
       summary: Получить информацию о пингах
       parameters:
-      - $ref: '#/components/parameters/IP'
+      - $ref: '#/components/parameters/ContainerIP'
       - $ref: '#/components/parameters/OldestFirst'
-      - $ref: '#/components/parameters/FilterSuccessful'
+      - $ref: '#/components/parameters/FilterSuccess'
       responses:
         "200":
           description: OK
@@ -48,6 +48,8 @@ paths:
     get:
       summary: Получить информацию о контейнерах и их последнем пинге
       parameters:
+      - $ref: '#/components/parameters/PingBefore'
+      - $ref: '#/components/parameters/SuccessBefore'
       - $ref: '#/components/parameters/ContainerSortProperty'
       - $ref: '#/components/parameters/SortOrder'
       - $ref: '#/components/parameters/Limit'
@@ -68,7 +70,29 @@ paths:
           description: Ошибка на стороне сервера
 components:
   parameters:
-    IP:
+    PingBefore:
+      in: query
+      name: ping_before
+      example: 2025-02-08T17:17:51.873Z
+      description: Максимальная дата пинга возвращаемых записей
+      required: false
+      style: form
+      explode: true
+      schema:
+        type: string
+        format: date-time
+    SuccessBefore:
+      in: query
+      name: success_before
+      example: 2025-02-08T17:17:51.873Z
+      description: Максимальная дата успешного пинга возвращаемых записей
+      required: false
+      style: form
+      explode: true
+      schema:
+        type: string
+        format: date-time
+    ContainerIP:
       in: query
       name: container_ip
       example: 127.0.0.1
@@ -81,6 +105,7 @@ components:
     SortOrder:
       in: query
       name: order
+      default: asc
       description: Порядок сортировки
       required: false
       style: form
@@ -128,9 +153,9 @@ components:
       explode: true
       schema:
         type: boolean
-    FilterSuccessful:
+    FilterSuccess:
       in: query
-      name: filter
+      name: success
       required: false
       style: form
       explode: true
@@ -151,23 +176,26 @@ components:
         ip:
           type: string
         last_ping:
-          type: integer
+          type: string
+          format: date-time
         last_success:
-          type: integer
+          type: string
+          format: date-time
       example:
         ip: 127.0.0.1
-        last_ping: 1739032217
-        last_success: 1739032217
+        last_ping: 2025-02-08T17:17:51.873Z
+        last_success: 2025-02-08T17:17:51.873Z
     PingInfo:
       type: object
       properties:
         ip:
           type: string
         timestamp:
-          type: integer
+          type: string
+          format: date-time
         success:
           type: boolean
       example:
         ip: 127.0.0.1
-        timestamp: 1739032217
+        timestamp: 2025-02-08T17:17:51.873Z
         success: true
