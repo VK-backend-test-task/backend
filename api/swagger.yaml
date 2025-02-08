@@ -1,0 +1,20 @@
+openapi: 3.0.0
+info:
+  title: Backend for Docker containers ping info service
+servers:
+- url: http://backend
+  description: Backend
+paths:
+  /ping:
+    get:
+      summary: Ping
+      responses:
+        "200":
+          description: Ping successful
+    post:
+      summary: Post ping
+      responses:
+        "200":
+          description: Ping post successful
+components:
+  schemas: {}
