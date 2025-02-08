@@ -1,20 +1,129 @@
 openapi: 3.0.0
 info:
   title: Backend for Docker containers ping info service
+  version: 0.1.0
 servers:
 - url: http://backend
   description: Backend
 paths:
-  /ping:
+  /containers:
     get:
-      summary: Ping
+      summary: Получить информацию о контейнерах и их последнем пинге (начиная от
+        самых старых)
+      parameters:
+      - name: pinged_before
+        in: query
+        description: Оставить только те контейнеры которые были пропингованы до определенного
+          момента времени
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: integer
+      - name: succeed_before
+        in: query
+        description: Оставить только те контейнеры которые были успешно пропингованы
+          до определенного момента времени
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: integer
+      - name: sort_by
+        in: query
+        description: Выбрать поле сортировки
+        required: false
+        style: form
+        explode: true
+        schema:
+          $ref: '#/components/schemas/ContainerInfoField'
+      - name: sort_order
+        in: query
+        description: Выбрать порядок сортировки
+        required: false
+        style: form
+        explode: true
+        schema:
+          $ref: '#/components/schemas/SortOrder'
+      - name: limit
+        in: query
+        description: Максимальное количество выдаваемых результатов
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: integer
+      - name: offset
+        in: query
+        description: "Количество результатов, которое необходимо пропустить"
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: integer
       responses:
         "200":
-          description: Ping successful
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ContainerInfo'
+                x-content-type: application/json
+        "400":
+          description: Ошибка на стороне пользователя
+        "500":
+          description: Ошибка на стороне сервера
+  /pings:
     post:
-      summary: Post ping
+      summary: Обновить информацию о пропингованных контейнерах
+      requestBody:
+        description: Список результатов пинга
+        content:
+          application/json: {}
+        required: true
       responses:
         "200":
-          description: Ping post successful
+          description: OK
+        "400":
+          description: Ошибка на стороне пользователя
+        "500":
+          description: Ошибка на стороне сервера
 components:
-  schemas: {}
+  schemas:
+    SortOrder:
+      type: string
+      enum:
+      - asc
+      - desc
+    ContainerInfoField:
+      type: string
+      enum:
+      - ip
+      - lastPing
+      - lastSuccess
+    ContainerInfo:
+      required:
+      - ip
+      type: object
+      properties:
+        ip:
+          type: string
+        lastPing:
+          type: integer
+        lastSuccess:
+          type: integer
+      example:
+        ip: ip
+        lastPing: 0
+        lastSuccess: 6
+    ContainerPingResult:
+      type: object
+      properties:
+        ip:
+          type: string
+        lastPing:
+          type: integer
+        success:
+          type: boolean

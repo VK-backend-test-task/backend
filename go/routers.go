@@ -55,16 +55,16 @@ var routes = Routes{
 	},
 
 	Route{
-		"PingGet",
+		"ContainersGet",
 		strings.ToUpper("Get"),
-		"/ping",
-		PingGet,
+		"/containers",
+		ContainersGet,
 	},
 
 	Route{
-		"PingPost",
+		"PingsPost",
 		strings.ToUpper("Post"),
-		"/ping",
-		PingPost,
+		"/pings",
+		PingsPost,
 	},
 }
