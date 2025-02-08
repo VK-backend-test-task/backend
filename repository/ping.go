@@ -64,7 +64,7 @@ func (r *pingRepository) buildStatementForGet(params PingGetParams) string {
 	}
 
 	statementStr := fmt.Sprintf(`SELECT ("id", "container_ip", "timestamp", "success") FROM "pings"
-		WHERE %s ORDER BY "timestamp" %s LIMIT %d OFFSET %d`,
+		WHERE %s ORDER BY "timestamp" %s LIMIT %d OFFSET %d;`,
 		condition, order, params.Limit, params.Offset)
 
 	return statementStr
@@ -109,7 +109,7 @@ func (r pingRepository) buildPutStatement(pings []domain.Ping) string {
 	values := make([]string, 0, len(pings))
 	for _, ping := range pings {
 		pingContainerIP := ping.ContainerIP.String()
-		pingTimestamp := ping.Timestamp.UTC().String()
+		pingTimestamp := ping.Timestamp.Format(time.RFC3339)
 		pingSuccess := "FALSE"
 		if ping.Success {
 			pingSuccess = "TRUE"
@@ -118,7 +118,7 @@ func (r pingRepository) buildPutStatement(pings []domain.Ping) string {
 		values = append(values, value)
 	}
 
-	statementStr := fmt.Sprintf(`INSERT INTO "pings" ("container_ip", "timestamp", "success") VALUES (%s)`, strings.Join(values, ", "))
+	statementStr := fmt.Sprintf(`INSERT INTO "pings" ("container_ip", "timestamp", "success") VALUES %s;`, strings.Join(values, ", "))
 	return statementStr
 }
 
@@ -153,7 +153,7 @@ func (r pingRepository) buildStatementForAggregate(params PingAggregateParams) s
 	}
 	statementStr := fmt.Sprintf(`
 		SELECT MAX("timestamp") "last_ping", MAX(CASE WHEN "success" "timestamp" END) "last_success" FROM "pings"
-		GROUP BY "container_ip" HAVING %s ORDER BY %s %s LIMIT %d OFFSET %d`, condition,
+		GROUP BY "container_ip" HAVING %s ORDER BY %s %s LIMIT %d OFFSET %d;`, condition,
 		pq.QuoteLiteral(string(*params.SortProperty)), pq.QuoteLiteral(string(*params.SortOrder)),
 		params.Limit, params.Offset)
 

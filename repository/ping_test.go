@@ -1,17 +1,24 @@
 package repository
 
 import (
+	"backend/domain"
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
-	"os"
+	"net/netip"
 	"testing"
+	"time"
 
+	migrate "github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 	_ "github.com/lib/pq"
 	"github.com/ory/dockertest/v3"
 )
 
 var db *sql.DB
+var repo pingRepository
 
 func TestMain(m *testing.M) {
 	pool, err := dockertest.NewPool("")
@@ -35,6 +42,7 @@ func TestMain(m *testing.M) {
 		if err != nil {
 			return err
 		}
+		repo = pingRepository{db: db}
 		return db.Ping()
 	}); err != nil {
 		log.Fatalf("Could not connect to database: %s", err)
@@ -47,10 +55,35 @@ func TestMain(m *testing.M) {
 
 	}()
 
+	driver, err := postgres.WithInstance(db, &postgres.Config{})
+	mm, err := migrate.NewWithDatabaseInstance(
+		"file:///home/petruekhin/Projects/vkb/backend/db/migration",
+		"postgres", driver)
+	if err != nil {
+		panic(err)
+	}
+	err = mm.Up()
+	if err != nil {
+		panic(err)
+	}
 	m.Run()
 }
 
 func TestSomething(t *testing.T) {
-	os.Exit(2)
-	// db.Query()
+	addr, err := netip.ParseAddr("127.0.0.1")
+	if err != nil {
+		panic(err)
+	}
+
+	err = repo.Put(context.Background(), []domain.Ping{{ContainerIP: addr, Timestamp: time.Now(), Success: true}})
+	if err != nil {
+		panic(err)
+	}
+
+	ret, err := repo.Get(context.Background(), PingGetParams{Limit: 10})
+	if err != nil {
+		panic(err)
+	}
+
+	t.Logf("%#v\n", ret)
 }
