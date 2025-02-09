@@ -50,10 +50,7 @@ paths:
     get:
       summary: Получить информацию о контейнерах и их последнем пинге
       parameters:
-      - $ref: '#/components/parameters/PingBefore'
-      - $ref: '#/components/parameters/SuccessBefore'
-      - $ref: '#/components/parameters/ContainerSortProperty'
-      - $ref: '#/components/parameters/SortOrder'
+      - $ref: '#/components/parameters/OldestFirst'
       - $ref: '#/components/parameters/Limit'
       - $ref: '#/components/parameters/Offset'
       responses:
@@ -72,28 +69,6 @@ paths:
           description: Ошибка на стороне сервера
 components:
   parameters:
-    PingBefore:
-      in: query
-      name: ping_before
-      example: 2025-02-08T17:17:51.873Z
-      description: Максимальная дата пинга возвращаемых записей
-      required: false
-      style: form
-      explode: true
-      schema:
-        type: string
-        format: date-time
-    SuccessBefore:
-      in: query
-      name: success_before
-      example: 2025-02-08T17:17:51.873Z
-      description: Максимальная дата успешного пинга возвращаемых записей
-      required: false
-      style: form
-      explode: true
-      schema:
-        type: string
-        format: date-time
     ContainerIP:
       in: query
       name: container_ip
@@ -104,19 +79,6 @@ components:
       explode: true
       schema:
         type: string
-    SortOrder:
-      in: query
-      name: order
-      default: asc
-      description: Порядок сортировки
-      required: false
-      style: form
-      explode: true
-      schema:
-        type: string
-        enum:
-        - asc
-        - desc
     Limit:
       in: query
       name: limit
@@ -137,15 +99,6 @@ components:
       schema:
         type: integer
         minimum: 0
-    ContainerSortProperty:
-      in: query
-      name: sort
-      description: Поле сортировки контейнеров
-      required: false
-      style: form
-      explode: true
-      schema:
-        $ref: '#/components/schemas/ContainerSortProperty'
     OldestFirst:
       in: query
       name: oldest_first
@@ -165,12 +118,6 @@ components:
       schema:
         type: boolean
   schemas:
-    ContainerSortProperty:
-      type: string
-      enum:
-      - ip
-      - last_ping
-      - last_success
     ContainerInfo:
       required: [ip]
       type: object
