@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/netip"
 	"slices"
-	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -23,8 +22,8 @@ type PingGetParams struct {
 
 type PingAggregateParams struct {
 	PingBefore   *time.Time
-	SortProperty *domain.ContainerSortProperty
-	SortOrder    *domain.ContainerOrder
+	SortProperty domain.ContainerSortProperty
+	SortOrder    domain.ContainerOrder
 	Limit        int
 	Offset       int
 }
@@ -110,19 +109,11 @@ func (r pingRepository) Put(ctx context.Context, pings []domain.Ping) error {
 }
 
 func (r pingRepository) Aggregate(ctx context.Context, params PingAggregateParams) ([]domain.ContainerInfo, error) {
-	if params.SortProperty == nil {
-		s := domain.ContainerSortByLastPing
-		params.SortProperty = &s
-	}
-	if params.SortOrder == nil {
-		s := domain.ContainerSortDesc
-		params.SortOrder = &s
-	}
-	tx := r.db.Model(&gormPingModel{}).Select("max(timestamp) last_ping)", "max(case when success timestamp end) last_success").
+	tx := r.db.Model(&gormPingModel{}).Select("container_ip ip", "max(timestamp) last_ping", "max(case when success then timestamp end) last_success").
 		Group("container_ip").Offset(params.Offset).
-		Order(clause.OrderByColumn{Column: clause.Column{Name: string(*params.SortProperty)}, Desc: *params.SortOrder == domain.ContainerSortDesc})
+		Order(clause.OrderByColumn{Column: clause.Column{Name: string(params.SortProperty)}, Desc: params.SortOrder == domain.ContainerSortDesc})
 	if params.PingBefore != nil {
-		tx = tx.Having("last_ping < ?", params.PingBefore)
+		tx = tx.Having("max(timestamp) < ?", params.PingBefore)
 	}
 	if params.Limit > 0 {
 		tx = tx.Limit(params.Limit)
@@ -139,20 +130,27 @@ func (r pingRepository) Aggregate(ctx context.Context, params PingAggregateParam
 			return nil, fmt.Errorf("could not parse ip from db: %w", err)
 		}
 
-		lastPing, err := time.Parse(time.RFC3339, container.LastPing)
-		if err != nil {
-			return nil, fmt.Errorf("could not parse last ping time from db: %w", err)
+		var pLastPing, pLastSuccess *time.Time
+		if container.LastPing != "" {
+			lastPing, err := time.Parse(time.RFC3339, container.LastPing)
+			if err != nil {
+				return nil, fmt.Errorf("could not parse last ping time from db: %w", err)
+			}
+			pLastPing = &lastPing
 		}
 
-		lastSuccess, err := time.Parse(time.RFC3339, container.LastPing)
-		if err != nil {
-			return nil, fmt.Errorf("could not parse last successful ping time from db: %w", err)
+		if container.LastSuccess != "" {
+			lastSuccess, err := time.Parse(time.RFC3339, container.LastSuccess)
+			if err != nil {
+				return nil, fmt.Errorf("could not parse last successful ping time from db: %w", err)
+			}
+			pLastSuccess = &lastSuccess
 		}
 
 		result[i] = domain.ContainerInfo{
 			IP:          containerIP,
-			LastPing:    &lastPing,
-			LastSuccess: &lastSuccess,
+			LastPing:    pLastPing,
+			LastSuccess: pLastSuccess,
 		}
 	}
 	return result, nil
@@ -213,14 +211,6 @@ func (r *inMemoryPingRespository) Get(ctx context.Context, params PingGetParams)
 }
 
 func (r *inMemoryPingRespository) Aggregate(ctx context.Context, params PingAggregateParams) ([]domain.ContainerInfo, error) {
-	if params.SortProperty == nil {
-		s := domain.ContainerSortByLastPing
-		params.SortProperty = &s
-	}
-	if params.SortOrder == nil {
-		s := domain.ContainerSortDesc
-		params.SortOrder = &s
-	}
 	// aggregate
 	m := make(map[string]domain.ContainerInfo)
 	for _, ping := range r.pings {
@@ -232,9 +222,9 @@ func (r *inMemoryPingRespository) Aggregate(ctx context.Context, params PingAggr
 		}
 		if curr.LastPing == nil || curr.LastPing.Compare(ping.Timestamp) < 0 {
 			curr.LastPing = &ping.Timestamp
-			if ping.Success {
-				curr.LastSuccess = &ping.Timestamp
-			}
+		}
+		if ping.Success && (curr.LastSuccess == nil || curr.LastSuccess.Compare(ping.Timestamp) < 0) {
+			curr.LastSuccess = &ping.Timestamp
 		}
 		m[k] = curr
 	}
@@ -249,9 +239,7 @@ func (r *inMemoryPingRespository) Aggregate(ctx context.Context, params PingAggr
 	// sort
 	slices.SortFunc(containers, func(a, b domain.ContainerInfo) int {
 		var cmp int
-		switch *params.SortProperty {
-		case domain.ContainerSortByIP:
-			cmp = strings.Compare(a.IP.String(), b.IP.String())
+		switch params.SortProperty {
 		case domain.ContainerSortByLastPing:
 			cmp = a.LastPing.Compare(*b.LastPing)
 		case domain.ContainerSortByLastSuccess:
@@ -259,7 +247,7 @@ func (r *inMemoryPingRespository) Aggregate(ctx context.Context, params PingAggr
 		default:
 			panic("unhandled case")
 		}
-		if *params.SortOrder == domain.ContainerSortAsc {
+		if params.SortOrder == domain.ContainerSortAsc {
 			return cmp
 		}
 		return -cmp
