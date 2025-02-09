@@ -16,7 +16,7 @@ import (
 func main() {
 	router := gin.Default()
 
-	url := fmt.Sprintf("postgresql://postgres:postgrespass@localhost:%s/postgres?sslmode=disable", resource.GetPort("5432/tcp"))
+	url := fmt.Sprintf("postgresql://postgres:postgrespass@localhost:%s/postgres?sslmode=disable", "5432")
 	db, err := sql.Open("postgres", url)
 	if err != nil {
 		panic(err)
@@ -24,10 +24,6 @@ func main() {
 	err = db.Ping()
 	if err != nil {
 		panic(err)
-	}
-
-	if err != nil {
-		panic(fmt.Errorf("Could not connect to database: %s", err))
 	}
 
 	gormDB, err := gorm.Open(postgres.New(postgres.Config{
@@ -40,6 +36,7 @@ func main() {
 
 	var svc service.PingService = repository.NewPingRepository(gormDB)
 
-	controller.NewPingsController(svc, router.Group("/pings")
-)
+	controller.NewPingsController(svc, router.Group("/pings"))
+
+	router.Run("127.0.0.1:3001")
 }
