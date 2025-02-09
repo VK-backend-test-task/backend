@@ -69,8 +69,11 @@ func (r pingRepository) Get(ctx context.Context, params PingGetParams) ([]domain
 	if params.Limit > 0 {
 		tx = tx.Limit(params.Limit)
 	}
+	if params.Success != nil {
+		tx = tx.Where("success = ?", *params.Success)
+	}
 	if params.ContainerIP != nil {
-		tx = tx.Where("container = ?", params.ContainerIP.String())
+		tx = tx.Where("container_ip = ?", params.ContainerIP.String())
 	}
 	tx = tx.Find(&gormPings)
 	if tx.Error != nil {

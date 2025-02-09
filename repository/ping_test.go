@@ -131,3 +131,45 @@ func TestPut(t *testing.T) {
 	mres := must(mrepo.Get(context.Background(), PingGetParams{OldestFirst: false}))
 	must0(checkPingsEqual(res, mres))
 }
+
+// compare all possible options of these two implementations
+func TestGet(t *testing.T) {
+	defer repo.clean()
+	defer mrepo.clean()
+	must0(repo.Put(context.Background(), sampleData))
+	must0(mrepo.Put(context.Background(), sampleData))
+
+	// orders := []domain.ContainerOrder{domain.ContainerSortAsc, domain.ContainerSortDesc}
+	// props := []domain.ContainerSortProperty{domain.ContainerSortByIP, domain.ContainerSortByLastPing, domain.ContainerSortByLastSuccess}
+	// for _, order := range orders {
+	// 	for _, prop := range props {
+	bools := []bool{false, true}
+	fls := false
+	tru := true
+	pbools := []*bool{nil, &fls, &tru}
+	cips := []*netip.Addr{nil}
+	for _, sample := range sampleAddresses {
+		cips = append(cips, &sample)
+	}
+
+	for limit := 0; limit < 8; limit++ {
+		for offset := 0; offset < 8; offset++ {
+			for _, success := range pbools {
+				for _, oldestFirst := range bools {
+					for _, containerIP := range cips {
+						params := PingGetParams{
+							ContainerIP: containerIP,
+							OldestFirst: oldestFirst,
+							Success:     success,
+							Limit:       limit,
+							Offset:      offset,
+						}
+						res := must(repo.Get(context.Background(), params))
+						mres := must(mrepo.Get(context.Background(), params))
+						must0(checkPingsEqual(res, mres))
+					}
+				}
+			}
+		}
+	}
+}
