@@ -6,6 +6,7 @@ import (
 	"backend/service"
 	"database/sql"
 	"fmt"
+	"os"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq"
@@ -16,7 +17,10 @@ import (
 func main() {
 	router := gin.Default()
 
-	url := fmt.Sprintf("postgresql://postgres:postgrespass@localhost:%s/postgres?sslmode=disable", "5432")
+	url, ok := os.LookupEnv("DB_URL")
+	if !ok {
+		panic(fmt.Errorf("no DB_URL connection link found"))
+	}
 	db, err := sql.Open("postgres", url)
 	if err != nil {
 		panic(err)
@@ -38,5 +42,5 @@ func main() {
 
 	controller.NewPingsController(svc, router.Group("/pings"))
 
-	router.Run("127.0.0.1:3001")
+	router.Run("0.0.0.0:3001")
 }
