@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	mrand "math/rand/v2"
 	"net/netip"
 	"testing"
 	"time"
@@ -18,8 +19,11 @@ import (
 )
 
 var db *sql.DB
-var repo PingRepository
+var repo pingRepository
+var mrepo *inMemoryPingRespository
 var gormDB *gorm.DB
+var sampleData []domain.Ping
+var sampleAddresses []netip.Addr
 
 func TestMain(m *testing.M) {
 	pool, err := dockertest.NewPool("")
@@ -63,47 +67,67 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
-	repo = NewPingRepository(gormDB)
 
-	m.Run()
-}
+	repo = NewPingRepository(gormDB).(pingRepository)
+	mrepo = &inMemoryPingRespository{}
 
-// the easiest possible test, no edge cases, just check that everything we wanted to insert was indeed inserted just as we wanted
-func TestPut(t *testing.T) {
-	records := make([]domain.Ping, 1024)
-	for i := range records {
+	sampleAddresses = make([]netip.Addr, 16)
+	for i := range sampleAddresses {
 		addrRaw := [4]byte{}
 		if n, err := rand.Read(addrRaw[:]); n != 4 || err != nil {
 			panic(err)
 		}
 
 		addr := netip.AddrFrom4(addrRaw)
-
-		records[i] = domain.Ping{ContainerIP: addr, Timestamp: time.Now().UTC(), Success: true}
+		sampleAddresses[i] = addr
 	}
 
-	err := repo.Put(context.Background(), records)
-	if err != nil {
-		panic(err)
+	sampleData = make([]domain.Ping, 1024)
+	tt := time.Now().UTC()
+	for i := range sampleData {
+		addr := sampleAddresses[mrand.Int()%len(sampleAddresses)]
+		sampleData[i] = domain.Ping{ContainerIP: addr, Timestamp: tt, Success: true}
+		tt = tt.Add(time.Second)
 	}
 
-	gormPings := make([]gormPingModel, 0)
-	gormDB.Model(&gormPingModel{}).Limit(len(records) + 1).Find(&gormPings)
-	if len(gormPings) != len(records) {
-		t.Fatalf("len mismatch (received %d instead of %d)", len(gormPings), len(records))
+	m.Run()
+}
+
+func checkPingsEqual(p1 []domain.Ping, p2 []domain.Ping) error {
+	if len(p1) != len(p2) {
+		return fmt.Errorf("length mismatch: %d != %d", len(p1), len(p2))
 	}
 
-	for i, gormPing := range gormPings {
-		if gormPing.ContainerIP != records[i].ContainerIP.String() {
-			t.Fatalf("IP addr mismatch at %d (our %s, their %s)", i, records[i].ContainerIP.String(), gormPing.ContainerIP)
-		}
-
-		if gormPing.Timestamp != records[i].Timestamp.Format(time.RFC3339) {
-			t.Fatalf("time mismatch at %d (our %s, their %s)", i, records[i].Timestamp.Format(time.RFC3339), gormPing.Timestamp)
-		}
-
-		if gormPing.Success != records[i].Success {
-			t.Fatalf("success mismatch at %d (out %t, their %t)", i, records[i].Success, gormPing.Success)
+	for i, ping1 := range p1 {
+		ping2 := p2[i]
+		if ping1.String() != ping2.String() {
+			return fmt.Errorf("data mismatch at %d: %s != %s", i, ping1, ping2)
 		}
 	}
+
+	return nil
+}
+
+func must0(e error) {
+	if e != nil {
+		panic(e)
+	}
+}
+
+func must[T any](v T, e error) T {
+	if e != nil {
+		panic(e)
+	}
+	return v
+}
+
+// compare results to the reference implementation
+func TestPut(t *testing.T) {
+	defer repo.clean()
+	defer mrepo.clean()
+	must0(repo.Put(context.Background(), sampleData))
+	must0(mrepo.Put(context.Background(), sampleData))
+	res := must(repo.Get(context.Background(), PingGetParams{OldestFirst: false}))
+	mres := must(mrepo.Get(context.Background(), PingGetParams{OldestFirst: false}))
+	must0(checkPingsEqual(res, mres))
 }
