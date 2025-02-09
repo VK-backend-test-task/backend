@@ -90,9 +90,6 @@ func TestMain(m *testing.M) {
 		tt = tt.Add(time.Second)
 	}
 
-	fmt.Println(sampleData)
-	fmt.Println()
-
 	m.Run()
 }
 
@@ -140,24 +137,19 @@ func must[T any](v T, e error) T {
 }
 
 // compare results to the reference implementation
-// func TestPut(t *testing.T) {
-// 	must0(repo.Put(context.Background(), sampleData))
-// 	must0(mrepo.Put(context.Background(), sampleData))
-// 	res := must(repo.Get(context.Background(), PingGetParams{OldestFirst: false}))
-// 	mres := must(mrepo.Get(context.Background(), PingGetParams{OldestFirst: false}))
-// 	must0(checkPingsEqual(res, mres, nil))
-// }
+func TestPut(t *testing.T) {
+	must0(repo.Put(context.Background(), sampleData))
+	must0(mrepo.Put(context.Background(), sampleData))
+	res := must(repo.Get(context.Background(), PingGetParams{OldestFirst: false}))
+	mres := must(mrepo.Get(context.Background(), PingGetParams{OldestFirst: false}))
+	must0(checkPingsEqual(res, mres, nil))
+}
 
-/*
 // compare all possible options of these two implementations
 func TestGet(t *testing.T) {
 	must0(repo.Put(context.Background(), sampleData))
 	must0(mrepo.Put(context.Background(), sampleData))
 
-	// orders := []domain.ContainerOrder{domain.ContainerSortAsc, domain.ContainerSortDesc}
-	// props := []domain.ContainerSortProperty{domain.ContainerSortByIP, domain.ContainerSortByLastPing, domain.ContainerSortByLastSuccess}
-	// for _, order := range orders {
-	// 	for _, prop := range props {
 	bools := []bool{false, true}
 	fls := false
 	tru := true
@@ -181,48 +173,34 @@ func TestGet(t *testing.T) {
 						}
 						res := must(repo.Get(context.Background(), params))
 						mres := must(mrepo.Get(context.Background(), params))
-						must0(checkPingsEqual(res, mres))
+						must0(checkPingsEqual(res, mres, &params))
 					}
 				}
 			}
 		}
 	}
 }
-*/
 
 // compare all possible options of these two implementations
 func TestAggregate(t *testing.T) {
 	must0(repo.Put(context.Background(), sampleData))
 	must0(mrepo.Put(context.Background(), sampleData))
 
-	orders := []domain.ContainerOrder{domain.ContainerSortAsc, domain.ContainerSortDesc}
-	props := []domain.ContainerSortProperty{domain.ContainerSortByLastPing, domain.ContainerSortByLastSuccess}
-	tt := sampleData[0].Timestamp.Add(-1 * time.Second)
-	ttt := sampleData[len(sampleData)-1].Timestamp.Add(1 * time.Second)
-	pbefs := []*time.Time{nil, &tt, &sampleData[0].Timestamp, &sampleData[1].Timestamp, &sampleData[len(sampleData)-2].Timestamp, &sampleData[len(sampleData)-1].Timestamp, &ttt}
+	bools := []bool{false, true}
 
-	for _, order := range orders {
-		for _, prop := range props {
-			for _, pbef := range pbefs {
-				for limit := 0; limit < 8; limit++ {
-					for offset := 0; offset < 8; offset++ {
-						params := PingAggregateParams{
-							SortProperty: prop,
-							SortOrder:    order,
-							Limit:        limit,
-							Offset:       offset,
-							PingBefore:   pbef,
-						}
-						res := must(repo.Aggregate(context.Background(), params))
-						mres := must(mrepo.Aggregate(context.Background(), params))
-						err := checkContainersEqual(res, mres, &params)
-						if err != nil {
-							fmt.Println(res)
-							fmt.Println()
-							fmt.Println(mres)
-							panic(err)
-						}
-					}
+	for _, oldestFirst := range bools {
+		for limit := 0; limit < 8; limit++ {
+			for offset := 0; offset < 8; offset++ {
+				params := PingAggregateParams{
+					Limit:       limit,
+					Offset:      offset,
+					OldestFirst: oldestFirst,
+				}
+				res := must(repo.Aggregate(context.Background(), params))
+				mres := must(mrepo.Aggregate(context.Background(), params))
+				err := checkContainersEqual(res, mres, &params)
+				if err != nil {
+					panic(err)
 				}
 			}
 		}
