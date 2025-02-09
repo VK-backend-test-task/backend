@@ -135,6 +135,7 @@ components:
         last_ping: 2025-02-08T17:17:51.873Z
         last_success: 2025-02-08T17:17:51.873Z
     PingInfo:
+      required: [container_ip, timestamp, success]
       type: object
       properties:
         container_ip:
